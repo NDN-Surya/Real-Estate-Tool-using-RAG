@@ -9,13 +9,13 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
 from langchain_groq import ChatGroq
 from langchain_huggingface.embeddings import HuggingFaceEmbeddings
+from chromadb.config import Settings
 
 load_dotenv()
 
 # Constants
 CHUNK_SIZE = 1000
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-VECTORSTORE_DIR = Path(__file__).parent / "resources/vectorstore"
 COLLECTION_NAME = "real_estate"
 
 llm = None
@@ -34,10 +34,20 @@ def initialize_components():
             model_kwargs={"trust_remote_code": True}
         )
 
+        # Configure Chroma to use PostgreSQL as its backend
         vector_store = Chroma(
             collection_name=COLLECTION_NAME,
             embedding_function=ef,
-            persist_directory=str(VECTORSTORE_DIR)
+            client_settings=Settings(
+                chroma_api_impl="postgresql",
+                chroma_db_impl="postgresql",
+                postgres_user="your_user",
+                postgres_password="your_password",
+                postgres_host="localhost",
+                postgres_port="5432",
+                postgres_database="your_database",
+                anonymized_telemetry=False
+            )
         )
 
 
@@ -70,9 +80,10 @@ def process_urls(urls):
 
     yield "Done adding docs to vector database...✅"
 
+
 def generate_answer(query):
     if not vector_store:
-        raise RuntimeError("Vector database is not initialized ")
+        raise RuntimeError("Vector database is not initialized")
 
     chain = RetrievalQAWithSourcesChain.from_llm(llm=llm, retriever=vector_store.as_retriever())
     result = chain.invoke({"question": query}, return_only_outputs=True)
@@ -87,7 +98,8 @@ if __name__ == "__main__":
         "https://www.cnbc.com/2024/12/20/why-mortgage-rates-jumped-despite-fed-interest-rate-cut.html"
     ]
 
-    process_urls(urls)
-    answer, sources = generate_answer("Tell me what was the 30 year fixed mortagate rate along with the date?")
+    for status in process_urls(urls):
+        print(status)
+    answer, sources = generate_answer("Tell me what was the 30 year fixed mortgage rate along with the date?")
     print(f"Answer: {answer}")
     print(f"Sources: {sources}")
